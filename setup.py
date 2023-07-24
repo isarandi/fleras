@@ -8,7 +8,7 @@ except KeyError:
 
 setup(
     name='fleras',
-    version='0.1.0',
+    version='0.1.1',
     author='István Sárándi',
     author_email='sarandi@vision.rwth-aachen.de',
     packages=['fleras', 'fleras.optimizers', 'fleras.layers'],
