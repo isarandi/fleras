@@ -1,4 +1,5 @@
 import tensorflow as tf
+import fleras.fused_renorm
 
 
 class GhostBatchNormalization(tf.keras.layers.BatchNormalization):
@@ -14,6 +15,26 @@ class GhostBatchNormalization(tf.keras.layers.BatchNormalization):
             return super(GhostBatchNormalization, self).call(inputs, training=False)
 
         split_inputs = tf.split(inputs, self.split, axis=0)
-        split_outputs = [super(GhostBatchNormalization, self).call(x, training=training)
-                         for x in split_inputs]
+        split_outputs = [
+            super(GhostBatchNormalization, self).call(x, training=training)
+            for x in split_inputs]
+        return tf.concat(split_outputs, axis=0)
+
+
+class GhostBatchRenormalization(fleras.fused_renorm.BatchNormalization):
+    """Splits the batch into virtual batches and normalizes them separately."""
+
+    def __init__(self, split=1, **kwargs):
+        kwargs.setdefault('name', 'batch_normalization')
+        super(GhostBatchRenormalization, self).__init__(**kwargs)
+        self.split = split
+
+    def call(self, inputs, training=None):
+        if not training:
+            return super(GhostBatchRenormalization, self).call(inputs, training=False)
+
+        split_inputs = tf.split(inputs, self.split, axis=0)
+        split_outputs = [
+            super(GhostBatchRenormalization, self).call(x, training=training)
+            for x in split_inputs]
         return tf.concat(split_outputs, axis=0)

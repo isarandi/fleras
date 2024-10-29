@@ -53,7 +53,9 @@ class MultiOptimizer(tf.keras.optimizers.Optimizer):
         self.optimizer_specs = [
             self.create_optimizer_spec(optimizer, layers_or_model)
             for optimizer, layers_or_model in optimizers_and_layers]
-
+        # Share the iterations counter
+#        for spec in self.optimizer_specs:
+        self.optimizer_specs[0]['optimizer'].iterations = self.iterations
 
     def apply_gradients(self, grads_and_vars, **kwargs):
         for spec in self.optimizer_specs:
@@ -66,6 +68,7 @@ class MultiOptimizer(tf.keras.optimizers.Optimizer):
                         spec['gv'].append((grad, var))
 
         for spec in self.optimizer_specs:
+            spec['optimizer'].iterations.assign(self.optimizer_specs[0]['optimizer'].iterations)
             spec['optimizer'].apply_gradients(spec['gv'], **kwargs)
 
     def finalize_variable_values(self, variables):
@@ -80,13 +83,25 @@ class MultiOptimizer(tf.keras.optimizers.Optimizer):
 
     @staticmethod
     def create_optimizer_spec(optimizer, layers_or_model):
-        if isinstance(layers_or_model, list):
-            weights = [var.name for sublayer in layers_or_model for var in sublayer.weights]
-        else:
-            weights = [var.name for var in layers_or_model.weights]
-
-        return dict(optimizer=optimizer, weights=weights)
+        weight_names = get_weight_names(layers_or_model)
+        return dict(optimizer=optimizer, weights=weight_names)
 
     @property
     def learning_rate(self):
         return self.optimizer_specs[0]['optimizer'].learning_rate
+
+
+def get_weight_names(x):
+    if isinstance(x, (list, tuple)):
+        result = []
+        for item in x:
+            result += get_weight_names(item)
+        return result
+    elif isinstance(x, (tf.keras.Model, tf.keras.layers.Layer)):
+        return [w.name for w in x.weights]
+    elif isinstance(x, tf.Variable):
+        return [x.name]
+    elif isinstance(x, str):
+        return [x]
+    else:
+        raise ValueError('Unsupported type:', type(x))

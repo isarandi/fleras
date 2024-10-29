@@ -26,7 +26,8 @@ class Wandb(tf.keras.callbacks.Callback):
 
         wandb.init(
             name=self.logdir.split('/')[-1], project=self.project_name, config=self.config_dict,
-            dir=f'{self.logdir}', id=run_id, resume='allow')
+            dir=f'{self.logdir}', id=run_id, resume='allow',
+            settings=wandb.Settings(_service_wait=300))
 
     def on_train_batch_end(self, batch, logs=None):
         import wandb
@@ -39,18 +40,35 @@ class Wandb(tf.keras.callbacks.Callback):
             wandb.log(logs, step=int(step), commit=True)
 
 
-class ProgbarLogger(tf.keras.callbacks.ProgbarLogger):
+class TestStateSetter(tf.keras.callbacks.Callback):
     def __init__(self):
+        super().__init__()
+
+    def on_test_begin(self, logs=None):
+        self.model.is_testing = True
+
+    def on_test_end(self, logs=None):
+        self.model.is_testing = False
+
+
+class ProgbarLogger(tf.keras.callbacks.ProgbarLogger):
+    def __init__(self, grad_accum_steps=1):
         super().__init__(count_mode='steps')
+        self.grad_accum_steps = grad_accum_steps
+        self.initial_step = 0
+
+    def set_initial_step(self, step):
+        self.initial_step = step
 
     def on_train_begin(self, logs=None):
         super().on_train_begin(logs)
-        self.seen = self.n_completed_steps
+        self.seen = self.initial_step
         self._maybe_init_progbar()
 
     def on_train_batch_end(self, batch, logs=None):
         if logs is not None:
             # Progbar should not average anything, we want to see raw info
+            # We already average over the grad_accum_steps in the train_step
             self.progbar._update_stateful_metrics(list(logs.keys()))
         super().on_train_batch_end(batch, logs)
 
@@ -69,7 +87,8 @@ class ProgbarLogger(tf.keras.callbacks.ProgbarLogger):
         if self.progbar is None:
             self.progbar = MyProgbar(
                 target=self.target, verbose=self.verbose, stateful_metrics=self.stateful_metrics,
-                unit_name="step" if self.use_steps else "sample")
+                unit_name="step" if self.use_steps else "sample",
+                grad_accum_steps=self.grad_accum_steps)
 
         self.progbar._update_stateful_metrics(self.stateful_metrics)
 
@@ -79,10 +98,11 @@ class MyProgbar(tf.keras.utils.Progbar):
 
     def __init__(
             self, target, width=30, verbose=1, interval=0.05, stateful_metrics=None,
-            unit_name='step'):
+            unit_name='step', grad_accum_steps=1):
         super(MyProgbar, self).__init__(
             target, width, verbose, interval, stateful_metrics, unit_name)
         self._initial_step = None
+        self.grad_accum_steps = grad_accum_steps
 
     def _estimate_step_duration(self, current, now):
         if self._initial_step is None:
@@ -242,6 +262,7 @@ class SwitchToInferenceModeCallback(tf.keras.callbacks.Callback):
         if (batch > self.step_to_switch_to_inference_mode
                 and not self.model.train_in_inference_mode):
             self.ckpt_manager.save(batch, check_interval=False)
+            self.ckpt_manager.checkpoint.save('ckpt_before_switch_to_inference_mode')
             self.model.train_in_inference_mode = True
             self.model.make_train_function(force=True)
 

@@ -22,7 +22,8 @@ setup(
     python_requires='>=3.6',
     install_requires=[] if dependencies_managed_by_conda else [
         'tensorflow',
-        'attrdict',
-        'numpy'
+        'numpy',
+        'wandb',
+        'more-itertools'
     ]
 )

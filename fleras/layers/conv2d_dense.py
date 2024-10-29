@@ -1,7 +1,10 @@
 import functools
 
 import tensorflow as tf
-from keras.utils import conv_utils
+try:
+    from keras.src.utils import conv_utils
+except ModuleNotFoundError:
+    from keras.utils import conv_utils
 
 
 class Conv2DDenseSame(tf.keras.layers.Conv2D):
